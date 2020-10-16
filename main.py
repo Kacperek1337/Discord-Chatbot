@@ -1,0 +1,163 @@
+import datetime
+import os
+from dataclasses import dataclass
+from string import ascii_letters
+
+import discord
+import textstat
+from chatterbot import ChatBot
+from chatterbot.conversation import Statement
+from chatterbot.trainers import ChatterBotCorpusTrainer
+
+TOKEN = os.getenv('TOKEN')
+CLIENT = None
+
+
+def ignore_errors(func):
+    def wrapper(*args, **kwargs):
+        try:
+            value = func(*args, **kwargs)
+            return value
+        except Exception:
+            pass
+    return wrapper
+
+
+def strip_non_letters(string):
+    return ''.join([
+        c for c in
+        string
+        if c in ascii_letters + ' '
+    ])
+
+
+@dataclass
+class BotMessage:
+    
+    message: str
+    recipent: str
+    
+    def __post_init__(self, *args):
+        self.created_at = datetime.datetime.now()
+
+
+class LastMessages:
+    
+    maximum_list_size = 3
+    
+    expire_after = datetime.timedelta(seconds=10)
+    
+    teach_if_len_in = range(3, 50)
+    maximum_gunning_fog = 10
+    
+    @classmethod
+    def _teach_chatbot(cls, response, statement):
+        if (
+            len(response) not in cls.teach_if_len_in or
+            textstat.gunning_fog(response) > cls.maximum_gunning_fog
+            ):
+            return
+        print(f'Teaching bot to answer to "{statement}" with "{response}"')
+        CLIENT.chatbot.learn_response(
+            Statement(response), Statement(statement)
+            )
+    
+    @staticmethod
+    def _lastest_item(items):
+        return max(items, key=lambda x: x.created_at)
+    
+    def _get_all_items_with_type(self, item_type):
+        return [
+            m for m in 
+            self.messages 
+            if type(m) is item_type
+        ]
+        
+    def get_last_messages_by_author(self, author):
+        return [
+            m for m in 
+            self._get_all_items_with_type(discord.Message) 
+            if m.author == author
+        ]
+    
+    @ignore_errors
+    def get_last_message_by_author(self, author):
+        return self._lastest_item(
+            self.get_last_messages_by_author(author)
+        )
+    
+    def get_last_bot_messages_for_recipent(self, recipent):
+        return [
+            m for m in 
+            self._get_all_items_with_type(BotMessage) 
+            if m.recipent == recipent
+        ]
+    
+    @ignore_errors
+    def get_last_bot_message_for_recipent(self, recipent):
+        return self._lastest_item(
+            self.get_last_bot_messages_for_recipent(recipent)
+        )
+        
+    def add_message(self, message):
+        if type(message) is not discord.Message:
+            raise TypeError('Must be a discord.Message')
+        if len(self.messages) + 1 > self.maximum_list_size:
+            self.messages.remove(min(
+                self.messages,
+                key=lambda x: x.created_at))
+        self.messages.append(message)
+        last_bot_message = self.get_last_bot_message_for_recipent(
+            message.author
+            )
+        if not last_bot_message:
+            return
+        if (
+            last_bot_message and
+            datetime.datetime.now() - last_bot_message.created_at < self.expire_after):
+            self._teach_chatbot(
+                strip_non_letters(message.content), last_bot_message.message
+                )
+        
+    def add_bot_message(self, message, recipent):
+        self.messages.append(
+            BotMessage(message, recipent)
+        )
+        
+    def __init__(self):
+        self.messages = []
+
+
+class DiscordChatBot(discord.Client):
+
+    def _respond(self, message):
+        statement = Statement(message.content)
+        response = self.chatbot.generate_response(
+            statement
+        ).text
+        self.last_messages.add_bot_message(response, message.author)
+        return response
+    
+    async def on_message(self, message):
+        if message.author == self.user:
+            return
+        self.last_messages.add_message(message)
+
+        await message.channel.send(self._respond(message))
+    
+    async def on_ready(self):
+        print(self.user, 'connected to Discord!')
+
+    def __init__(self, *args, **kwargs):
+        self.chatbot = ChatBot('Json')
+        ChatterBotCorpusTrainer(self.chatbot).train(
+            'chatterbot.corpus.english'
+        )
+        self.last_messages = LastMessages()
+        
+        super().__init__(*args, **kwargs)
+
+
+if __name__ == '__main__':
+    CLIENT = DiscordChatBot()
+    CLIENT.run(TOKEN)

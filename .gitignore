@@ -1,0 +1,5 @@
+db.sqlite3
+db.sqlite3-shm
+db.sqlite3-wal
+sentence_tokenizer.pickle
+.vscode/settings.json

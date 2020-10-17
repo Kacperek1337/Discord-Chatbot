@@ -1,7 +1,6 @@
 import datetime
 import os
 from dataclasses import dataclass
-from string import ascii_letters
 
 import discord
 import textstat
@@ -23,14 +22,6 @@ def ignore_errors(func):
     return wrapper
 
 
-def strip_non_letters(string):
-    return ''.join([
-        c for c in
-        string
-        if c in ascii_letters + ' '
-    ])
-
-
 @dataclass
 class BotMessage:
     
@@ -43,12 +34,12 @@ class BotMessage:
 
 class LastMessages:
     
-    maximum_list_size = 3
+    maximum_list_size = 100
     
     expire_after = datetime.timedelta(seconds=10)
     
     teach_if_len_in = range(3, 50)
-    maximum_gunning_fog = 10
+    maximum_gunning_fog = 5
     
     @classmethod
     def _teach_chatbot(cls, response, statement):
@@ -99,14 +90,18 @@ class LastMessages:
             self.get_last_bot_messages_for_recipent(recipent)
         )
         
-    def add_message(self, message):
-        if type(message) is not discord.Message:
-            raise TypeError('Must be a discord.Message')
-        if len(self.messages) + 1 > self.maximum_list_size:
+    def _add(self, item):
+        while len(self.messages) + 1 > self.maximum_list_size:
             self.messages.remove(min(
                 self.messages,
                 key=lambda x: x.created_at))
-        self.messages.append(message)
+        self.messages.append(item)
+        
+        
+    def add_message(self, message):
+        if type(message) is not discord.Message:
+            raise TypeError('Must be a discord.Message')
+        self._add(message)
         last_bot_message = self.get_last_bot_message_for_recipent(
             message.author
             )
@@ -116,11 +111,11 @@ class LastMessages:
             last_bot_message and
             datetime.datetime.now() - last_bot_message.created_at < self.expire_after):
             self._teach_chatbot(
-                strip_non_letters(message.content), last_bot_message.message
+                message.content, last_bot_message.message
                 )
         
     def add_bot_message(self, message, recipent):
-        self.messages.append(
+        self._add(
             BotMessage(message, recipent)
         )
         
@@ -135,13 +130,13 @@ class DiscordChatBot(discord.Client):
         response = self.chatbot.generate_response(
             statement
         ).text
+        self.last_messages.add_message(message)
         self.last_messages.add_bot_message(response, message.author)
         return response
     
     async def on_message(self, message):
         if message.author == self.user:
             return
-        self.last_messages.add_message(message)
 
         await message.channel.send(self._respond(message))
     
@@ -149,7 +144,12 @@ class DiscordChatBot(discord.Client):
         print(self.user, 'connected to Discord!')
 
     def __init__(self, *args, **kwargs):
-        self.chatbot = ChatBot('Json')
+        self.chatbot = ChatBot(
+            'Json', 
+            preprocessors=[
+                'chatterbot.preprocessors.clean_whitespace',
+                'chatterbot.preprocessors.convert_to_ascii'
+        ])
         ChatterBotCorpusTrainer(self.chatbot).train(
             'chatterbot.corpus.english'
         )
@@ -159,5 +159,6 @@ class DiscordChatBot(discord.Client):
 
 
 if __name__ == '__main__':
+    print('Starting Discord Chatbot...')
     CLIENT = DiscordChatBot()
     CLIENT.run(TOKEN)

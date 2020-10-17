@@ -54,7 +54,7 @@ class LastMessages:
             )
     
     @staticmethod
-    def _lastest_item(items):
+    def _latest_item(items):
         return max(items, key=lambda x: x.created_at)
     
     def _get_all_items_with_type(self, item_type):
@@ -73,7 +73,7 @@ class LastMessages:
     
     @ignore_errors
     def get_last_message_by_author(self, author):
-        return self._lastest_item(
+        return self._latest_item(
             self.get_last_messages_by_author(author)
         )
     
@@ -86,7 +86,7 @@ class LastMessages:
     
     @ignore_errors
     def get_last_bot_message_for_recipent(self, recipent):
-        return self._lastest_item(
+        return self._latest_item(
             self.get_last_bot_messages_for_recipent(recipent)
         )
         

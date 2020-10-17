@@ -39,7 +39,7 @@ class LastMessages:
     expire_after = datetime.timedelta(seconds=10)
     
     teach_if_len_in = range(3, 50)
-    maximum_gunning_fog = 5
+    maximum_gunning_fog = 12
     
     @classmethod
     def _teach_chatbot(cls, response, statement):
